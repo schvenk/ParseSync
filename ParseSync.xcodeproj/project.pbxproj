@@ -9,14 +9,22 @@
 /* Begin PBXBuildFile section */
 		17ED4A92151BB85D00CA7303 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 17ED4A91151BB85D00CA7303 /* Foundation.framework */; };
 		17ED4A98151BB85D00CA7303 /* ParseSync.m in Sources */ = {isa = PBXBuildFile; fileRef = 17ED4A97151BB85D00CA7303 /* ParseSync.m */; };
+		17ED4AA5151BBA7B00CA7303 /* PSModel.h in Headers */ = {isa = PBXBuildFile; fileRef = 17ED4AA1151BBA7B00CA7303 /* PSModel.h */; };
+		17ED4AA6151BBA7B00CA7303 /* PSModel.m in Sources */ = {isa = PBXBuildFile; fileRef = 17ED4AA2151BBA7B00CA7303 /* PSModel.m */; };
+		17ED4AA7151BBA7B00CA7303 /* PSSyncController.h in Headers */ = {isa = PBXBuildFile; fileRef = 17ED4AA3151BBA7B00CA7303 /* PSSyncController.h */; };
+		17ED4AA8151BBA7B00CA7303 /* PSSyncController.m in Sources */ = {isa = PBXBuildFile; fileRef = 17ED4AA4151BBA7B00CA7303 /* PSSyncController.m */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		17ED4A8E151BB85D00CA7303 /* libParseSync.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = libParseSync.a; sourceTree = BUILT_PRODUCTS_DIR; };
 		17ED4A91151BB85D00CA7303 /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = System/Library/Frameworks/Foundation.framework; sourceTree = SDKROOT; };
-		17ED4A95151BB85D00CA7303 /* ParseSync-Prefix.pch */ = {isa = PBXFileReference; path = "ParseSync-Prefix.pch"; sourceTree = "<group>"; };
-		17ED4A96151BB85D00CA7303 /* ParseSync.h */ = {isa = PBXFileReference; path = ParseSync.h; sourceTree = "<group>"; };
+		17ED4A95151BB85D00CA7303 /* ParseSync-Prefix.pch */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "ParseSync-Prefix.pch"; sourceTree = "<group>"; };
+		17ED4A96151BB85D00CA7303 /* ParseSync.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ParseSync.h; sourceTree = "<group>"; };
 		17ED4A97151BB85D00CA7303 /* ParseSync.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = ParseSync.m; sourceTree = "<group>"; };
+		17ED4AA1151BBA7B00CA7303 /* PSModel.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PSModel.h; sourceTree = "<group>"; };
+		17ED4AA2151BBA7B00CA7303 /* PSModel.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = PSModel.m; sourceTree = "<group>"; };
+		17ED4AA3151BBA7B00CA7303 /* PSSyncController.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PSSyncController.h; sourceTree = "<group>"; };
+		17ED4AA4151BBA7B00CA7303 /* PSSyncController.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = PSSyncController.m; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -59,6 +67,10 @@
 		17ED4A93151BB85D00CA7303 /* ParseSync */ = {
 			isa = PBXGroup;
 			children = (
+				17ED4AA1151BBA7B00CA7303 /* PSModel.h */,
+				17ED4AA2151BBA7B00CA7303 /* PSModel.m */,
+				17ED4AA3151BBA7B00CA7303 /* PSSyncController.h */,
+				17ED4AA4151BBA7B00CA7303 /* PSSyncController.m */,
 				17ED4A96151BB85D00CA7303 /* ParseSync.h */,
 				17ED4A97151BB85D00CA7303 /* ParseSync.m */,
 				17ED4A94151BB85D00CA7303 /* Supporting Files */,
@@ -81,6 +93,8 @@
 			isa = PBXHeadersBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				17ED4AA5151BBA7B00CA7303 /* PSModel.h in Headers */,
+				17ED4AA7151BBA7B00CA7303 /* PSSyncController.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -135,6 +149,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				17ED4A98151BB85D00CA7303 /* ParseSync.m in Sources */,
+				17ED4AA6151BBA7B00CA7303 /* PSModel.m in Sources */,
+				17ED4AA8151BBA7B00CA7303 /* PSSyncController.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -226,6 +242,7 @@
 				17ED4A9D151BB85D00CA7303 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
 	};
