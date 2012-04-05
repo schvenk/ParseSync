@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		1735681F152E280600BF7689 /* Parse.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 1735681E152E280600BF7689 /* Parse.framework */; };
 		17ED4A92151BB85D00CA7303 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 17ED4A91151BB85D00CA7303 /* Foundation.framework */; };
 		17ED4A98151BB85D00CA7303 /* ParseSync.m in Sources */ = {isa = PBXBuildFile; fileRef = 17ED4A97151BB85D00CA7303 /* ParseSync.m */; };
 		17ED4AA5151BBA7B00CA7303 /* PSModel.h in Headers */ = {isa = PBXBuildFile; fileRef = 17ED4AA1151BBA7B00CA7303 /* PSModel.h */; };
@@ -16,6 +17,7 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		1735681E152E280600BF7689 /* Parse.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; path = Parse.framework; sourceTree = "<group>"; };
 		17ED4A8E151BB85D00CA7303 /* libParseSync.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = libParseSync.a; sourceTree = BUILT_PRODUCTS_DIR; };
 		17ED4A91151BB85D00CA7303 /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = System/Library/Frameworks/Foundation.framework; sourceTree = SDKROOT; };
 		17ED4A95151BB85D00CA7303 /* ParseSync-Prefix.pch */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "ParseSync-Prefix.pch"; sourceTree = "<group>"; };
@@ -33,6 +35,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				17ED4A92151BB85D00CA7303 /* Foundation.framework in Frameworks */,
+				1735681F152E280600BF7689 /* Parse.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -59,6 +62,7 @@
 		17ED4A90151BB85D00CA7303 /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
+				1735681E152E280600BF7689 /* Parse.framework */,
 				17ED4A91151BB85D00CA7303 /* Foundation.framework */,
 			);
 			name = Frameworks;
@@ -203,6 +207,10 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				DSTROOT = /tmp/ParseSync.dst;
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					"\"$(SRCROOT)\"",
+				);
 				GCC_PRECOMPILE_PREFIX_HEADER = YES;
 				GCC_PREFIX_HEADER = "ParseSync/ParseSync-Prefix.pch";
 				OTHER_LDFLAGS = "-ObjC";
@@ -215,6 +223,10 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				DSTROOT = /tmp/ParseSync.dst;
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					"\"$(SRCROOT)\"",
+				);
 				GCC_PRECOMPILE_PREFIX_HEADER = YES;
 				GCC_PREFIX_HEADER = "ParseSync/ParseSync-Prefix.pch";
 				OTHER_LDFLAGS = "-ObjC";
