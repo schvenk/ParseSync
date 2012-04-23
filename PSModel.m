@@ -7,6 +7,7 @@
 //
 
 #import "PSModel.h"
+#import "PSSyncController.h"
 
 @interface PSModel ()
 - (void)createDocId;
@@ -18,6 +19,7 @@
 @dynamic updatedAt;
 @dynamic docId;
 @dynamic serverPushAction;
+@dynamic docVersion;
 
 
 + (BOOL)shouldIgnoreAttribute:(NSString *)attr pushing:(BOOL)pushing
@@ -36,6 +38,7 @@
 {
     [super awakeFromInsert];
     self.createdAt = [NSDate date];
+    self.docVersion = [NSNumber numberWithInt:0];
     [self createDocId];
 }
 
@@ -44,6 +47,9 @@
 {
     if (!self.createdAt) [self setPrimitiveValue:[NSDate date] forKey:@"createdAt"]; // @todo For backward compatibility with early alphas
     [self setPrimitiveValue:[NSDate date] forKey:@"updatedAt"];
+    if (![[PSSyncController sharedInstance] isSavingSyncedChanges]) {
+        [self setPrimitiveValue:[NSNumber numberWithInt:[self.docVersion intValue]+1]  forKey:@"docVersion"];
+    }
     [super willSave];
 }
 
@@ -65,9 +71,9 @@
     PFQuery *query = [PFQuery queryWithClassName:self.entity.name];
     [query whereKey:@"docId" equalTo:self.docId];
     [query findObjectsInBackgroundWithBlock:^(NSArray *serverQueryResult, NSError *error) {
-        if (error) NSLog(@"Error querying Parse while trying to delete an object: %@", error.description);
+        if (error) SKLog(YES, @"Error querying Parse while trying to delete an object: %@", error.description);
         else if (!serverQueryResult.count || serverQueryResult.count > 1) {
-            NSLog(@"Error while deleting an object: %d server objects for a doc ID.", serverQueryResult.count);
+            SKLog(YES, @"Error while deleting an object: %d server objects for a doc ID.", serverQueryResult.count);
         }
         else {
             PFObject *serverObject = [serverQueryResult objectAtIndex:0];
@@ -90,7 +96,7 @@
         // For simplicity's sake we're pushing deleted objects immediately, so we can avoid
         // tracking a list of deleted objects outside core data. @todo reevaluate at some point.
         // In other words this shouldn't happen.
-        NSLog(@"Sync Error: Attempt to queue deletion.");
+        SKLog(YES, @"Sync Error: Attempt to queue deletion.");
         
     } else if (!self.serverPushAction || [self.serverPushAction isEqualToString:@""]) {
         // Simplest case. Not currently queued so assign action and we're done.
@@ -100,30 +106,30 @@
         // Already queued for insertion
         if ([action isEqualToString:SKUndeletedObjectsKey]) {
             // This should be impossible. Checking for errors anyway.
-            NSLog(@"Error queueing an object for push: Insert + Undelete is theoretically impossible.");
+            SKLog(YES, @"Error queueing an object for push: Insert + Undelete is theoretically impossible.");
         }
         // Insert + anything else = insert so leave it alone.
         
     } else if ([self.serverPushAction isEqualToString:NSUpdatedObjectsKey]) {
         if ([action isEqualToString:NSInsertedObjectsKey]) {
-            NSLog(@"Error queueing an object for push: Update + Insert is theoretically impossible.");
+            SKLog(YES, @"Error queueing an object for push: Update + Insert is theoretically impossible.");
         } else {
             // Use the most recent action in all other cases
             self.serverPushAction = action;
         }
     
     } else if ([self.serverPushAction isEqualToString:NSDeletedObjectsKey]) {
-        NSLog(@"Error queuing for push: Delete + anything shouldn't happen.");
+        SKLog(YES, @"Error queuing for push: Delete + anything shouldn't happen.");
         // But just in case...
         self.serverPushAction = action;
 
     } else if ([self.serverPushAction isEqualToString:SKUndeletedObjectsKey]) {
-        if ([action isEqualToString:NSInsertedObjectsKey]) NSLog(@"Error queueing for push: Undelete + Insert shouldn't happen.");
+        if ([action isEqualToString:NSInsertedObjectsKey]) SKLog(YES, @"Error queueing for push: Undelete + Insert shouldn't happen.");
         else if ([action isEqualToString:NSDeletedObjectsKey]) self.serverPushAction = @""; // Undelete + delete gets us back to the server state
         // Otherwise leave it alone.
 
     } else {
-        NSLog(@"Error queuing for push: no queuing clause applied.");
+        SKLog(YES, @"Error queuing for push: no queuing clause applied.");
     }
 }
 
@@ -136,5 +142,17 @@
     self.serverPushAction = @"";
 }
 
+/**
+ * Compare local and remote objects to see which is newer by version, since clocks can't be trusted.
+ */
+- (NSComparisonResult)compareVersionWithServerObject: (PFObject *)serverObject
+{
+    int localVersion = [self.docVersion intValue];
+    int serverVersion = [[serverObject objectForKey:@"docVersion"] intValue];
+    
+    if (localVersion == serverVersion) return NSOrderedSame;
+    if (localVersion > serverVersion) return NSOrderedDescending;
+    return NSOrderedAscending;
+}
 
 @end

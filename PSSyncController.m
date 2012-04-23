@@ -14,18 +14,16 @@
 {
     int currentlyPullingFromServer; // Represents the number of outstanding server pull operations. @todo better way?
     int currentlyPushingToServer;
+    NSTimer *pullTimer;
+    NSTimer *pushTimer;
+    BOOL isRunning;
 }
 
 @property (nonatomic) NSDate *lastServerSyncDate;
-@property (strong, nonatomic) NSManagedObjectContext *managedObjectContext;
 
 @property (strong, nonatomic) NSMutableSet *syncedEntityNames;
 @property (strong, nonatomic) NSMutableSet *pullQueries;
 @property (strong, nonatomic) NSMutableSet *pushQueries;
-
-// @todo is there any danger in ignoring the managed object context that 
-// comes in via the notification and doing it centrally like this?
-@property (nonatomic) BOOL shouldPushLocalChangesToServer; 
 
 // Core sync operations
 - (void)pullFromServer;
@@ -48,6 +46,7 @@
 
 @end
 
+static PSSyncController *_sharedSyncControllerInstance = nil;
 
 #define PSPrefKeyLastServerSync @"PSPrefKeyLastServerSync"
 #define PSSyncControllerKeyshouldPushLocalChangesToServer @"PSSyncControllerKeyshouldPushLocalChangesToServer"
@@ -61,11 +60,33 @@
 @synthesize syncedEntityNames = _syncedEntityNames;
 @synthesize pullQueries = _pullQueries;
 @synthesize pushQueries = _pushQueries;
-@synthesize shouldPushLocalChangesToServer = _shouldPushLocalChangesToServer;
+@synthesize isSavingSyncedChanges = _isSavingSyncedChanges;
 
 @synthesize pullIntervalInMinutes = _pullIntervalInMinutes;
 @synthesize pushIntervalInMinutes = _pushIntervalInMinutes;
 
+
+
+
+#pragma mark - Singleton stuff
+
++ (PSSyncController *)sharedInstance
+{
+    if (!_sharedSyncControllerInstance) {
+        _sharedSyncControllerInstance = [[super allocWithZone:NULL] init];
+    }
+    return _sharedSyncControllerInstance;
+}
+
++ (id)allocWithZone:(NSZone *)zone
+{
+    return [self sharedInstance];
+}
+
+- (id)copyWithZone:(NSZone *)zone
+{
+    return self;
+}
 
 
 #pragma mark - Setup
@@ -73,29 +94,15 @@
 /**
  * Initializes with a supplied managed object context.
  */
-- (id)initWithManagedObjectContext:(NSManagedObjectContext *)context
+- (id)init
 {
     self = [super init];
     if (self) {
-        self.shouldPushLocalChangesToServer = YES;
-        self.managedObjectContext = context;
+        _isSavingSyncedChanges = NO;
         currentlyPullingFromServer = 0;
         currentlyPushingToServer = 0;
-        NSNotificationCenter *nc = [NSNotificationCenter defaultCenter];
-        [nc addObserver:self selector:@selector(localDataChanged:) name:NSManagedObjectContextDidSaveNotification object:self.managedObjectContext];
     }
     return self;
-}
-
-
-/**
- * Initializes without a supplied context. Assumes a manged object context
- * conforming to Apple's conventions, i.e. available via the app delegate's
- * managedObjectContext property.
- */
-- (id)init
-{
-    return [self initWithManagedObjectContext:nil];
 }
 
 
@@ -108,8 +115,11 @@
 {
     // Add a pull query to grab updates from the server
     PFQuery *pullQuery = [PFQuery queryWithClassName:entityName];
+    
+    pullQuery.limit = [NSNumber numberWithInt:NSIntegerMax]; // @todo let this run in batches if necessary? or something?
+    
     if (!pullQuery) {
-        NSLog(@"Error: Unable to create pull query for entity %@.", entityName);
+        SKLog(YES, @"Error: Unable to create pull query for entity %@.", entityName);
     }
     else {
         if (!self.pullQueries) {
@@ -134,17 +144,35 @@
  */
 - (void)start
 {
+    isRunning = YES;
+    
     // Grab the latest from the server and start periodic pulling
     [self pullFromServer];
-    [NSTimer scheduledTimerWithTimeInterval:self.pullIntervalInMinutes * 60  target:self selector:@selector(pullFromServer) userInfo:nil repeats:YES];
+    pullTimer = [NSTimer scheduledTimerWithTimeInterval:self.pullIntervalInMinutes * 60  target:self selector:@selector(pullFromServer) userInfo:nil repeats:YES];
     
     // Push changes to the server and start periodic pushing
     [self pushToServer];
-    [NSTimer scheduledTimerWithTimeInterval:self.pushIntervalInMinutes*60 target:self selector:@selector(pushToServer) userInfo:nil repeats:YES];
+    pushTimer = [NSTimer scheduledTimerWithTimeInterval:self.pushIntervalInMinutes*60 target:self selector:@selector(pushToServer) userInfo:nil repeats:YES];
     
     // Register to pull when the app activates. Not pushing here since it'll happen a couple seconds later.
     // @todo Don't sync if we've just switched away and back quickly.
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(pullFromServer) name:SKNotificationAppDidBecomeActive object:nil];
+}
+
+- (void)stop
+{
+    isRunning = NO;
+    
+    [pullTimer invalidate];
+    pullTimer = nil;
+    
+    [pushTimer invalidate];
+    pushTimer = nil;
+    
+    [[NSNotificationCenter defaultCenter] removeObserver:self name:SKNotificationAppDidBecomeActive object:nil];
+    
+    // @todo - May still be some race conditions, e.g., we invalidate the timers but operations are 
+    // running on separate threads. isRunning should help but may not be a complete solution.
 }
 
 
@@ -157,7 +185,7 @@
  */
 - (void)pullFromServer
 {
-    if (!currentlyPullingFromServer) {
+    if (isRunning && !currentlyPullingFromServer) {
         if ([PFUser currentUser]) {
             for (PFQuery *q in self.pullQueries) {
                 currentlyPullingFromServer++; // Avoid running multiple pull operations simultaneously.
@@ -174,7 +202,7 @@
  */
 - (void)pushToServer
 {
-    if (!currentlyPushingToServer && !currentlyPullingFromServer && [PFUser currentUser]) {
+    if (isRunning && !currentlyPushingToServer && !currentlyPullingFromServer && [PFUser currentUser]) {
         // A running pull blocks a push, but not vice versa.
         for (NSFetchRequest *fetchReq in self.pushQueries) {
             currentlyPushingToServer++;
@@ -183,12 +211,12 @@
             NSError *error = nil;
             NSArray *queuedLocalObjects = [self.managedObjectContext executeFetchRequest:fetchReq error:&error];
             if (!queuedLocalObjects) {
-                NSLog(@"Error fetching changed tasks.");
+                SKLog(YES, @"Error fetching changed tasks.");
                 return;
             }
             
             if (queuedLocalObjects.count) {
-                NSLog(@"Pushing %d queued objects.", queuedLocalObjects.count);
+                SKLog(YES, @"Pushing %d queued objects.", queuedLocalObjects.count);
                 
                 [self pushLocalObjects:queuedLocalObjects];
             }
@@ -208,18 +236,20 @@
  */
 - (void)localDataChanged:(NSNotification *)n
 {
-    // If the notification was generated in the course of the sync controller itself
-    // saving data, don't push it, but do clear that flag.
-    if (!self.shouldPushLocalChangesToServer) {
-        self.shouldPushLocalChangesToServer = YES;
-        return;
+    if (isRunning) {
+        // If the notification was generated in the course of the sync controller itself
+        // saving data, don't push it, but do clear that flag.
+        if (_isSavingSyncedChanges) {
+            _isSavingSyncedChanges = NO;
+            return;
+        }
+        SKLog(NO, @"Pushing changed local data.");
+        
+        NSDictionary *changes = n.userInfo;
+        [self processChangedObjectsInChangeDictionary:changes action:NSDeletedObjectsKey];
+        [self processChangedObjectsInChangeDictionary:changes action:NSInsertedObjectsKey];
+        [self processChangedObjectsInChangeDictionary:changes action:NSUpdatedObjectsKey];    
     }
-    NSLog(@"Pushing changed local data.");
-    
-    NSDictionary *changes = n.userInfo;
-    [self processChangedObjectsInChangeDictionary:changes action:NSDeletedObjectsKey];
-    [self processChangedObjectsInChangeDictionary:changes action:NSInsertedObjectsKey];
-    [self processChangedObjectsInChangeDictionary:changes action:NSUpdatedObjectsKey];    
 }
 
 
@@ -229,69 +259,77 @@
  */
 - (void)serverDataReceived:(NSArray *)data error:(NSError *)error
 {
-    if (error) {
-        NSLog(@"Server pull error: %@", error.description);
-        return;
-    }
-    
-    BOOL changedALocalObject = NO; // Set to YES when the returned data results in a local change that needs saving.
-    
-    // @todo Right now, a local change that gets pushed to the server auto-updates the server's updatedAt field. This results
-    // in that same change coming back down as a server change. We prevent an infinite loop client-side so it's not destructive
-    // in any way, but it is extra network traffic.
-    
-    if (data.count) NSLog(@"Received %d server changes.", data.count);
-    for (PFObject *serverObject in data) {
+    if (isRunning) {
+        if (error) {
+            SKLog(YES, @"Server pull error: %@", error.description);
+            return;
+        }
+
+        BOOL changedALocalObject = NO; // Set to YES when the returned data results in a local change that needs saving.
         
-        // Find the corresponding Core Data object
-        PSModel *localObject = [self localObjectWithId:[serverObject valueForKey:@"docId"] class:[serverObject className]];
+        // @todo Right now, a local change that gets pushed to the server auto-updates the server's updatedAt field. This results
+        // in that same change coming back down as a server change. We prevent an infinite loop client-side so it's not destructive
+        // in any way, but it is extra network traffic.
         
-        if ([[serverObject valueForKey:@"docDeleted"] boolValue]) {
-            // Object was deleted on the server
-            if (localObject) {
-                if ([serverObject.updatedAt compare:localObject.updatedAt] == NSOrderedAscending) {
-                    // Local object is newer. Any change always trumps deletion, 
-                    // so throw out deletion and queue local object to push.
-                    [localObject pushToServerWithAction:SKUndeletedObjectsKey];
+        if (data.count) SKLog(NO, @"Received %d server changes.", data.count);
+        for (PFObject *serverObject in data) {
+            
+            // Find the corresponding Core Data object
+            PSModel *localObject = [self localObjectWithId:[serverObject valueForKey:@"docId"] class:[serverObject className]];
+            
+            if ([[serverObject valueForKey:@"docDeleted"] boolValue]) {
+                // Object was deleted on the server
+                if (localObject) {
+                    if ([localObject compareVersionWithServerObject:serverObject] == NSOrderedDescending) {
+                        // Local object is newer. Any change always trumps deletion, 
+                        // so throw out deletion and queue local object to push.
+                        [localObject pushToServerWithAction:SKUndeletedObjectsKey];
+                    } else {
+                        [self.managedObjectContext deleteObject:localObject];
+                        changedALocalObject = YES;
+                    }
+                }
+                else { // Local object not found.
+                    // @todo Again, not sure how to prevent locally-originated changes from coming back down
+                    // from server. It's extra traffic but not destructive in any way.
+                }
+            } else {
+                // Object was updated or inserted on server
+                if (localObject) {
+                    // Local object exists, so it's an update
+                    NSComparisonResult versionComparison = [localObject compareVersionWithServerObject:serverObject];
+                    
+                    if (versionComparison == NSOrderedDescending) {
+                        // Local object is newer, so update server object instead and throw out server change
+                        [localObject pushToServerWithAction:NSUpdatedObjectsKey];
+                    } else if (versionComparison == NSOrderedAscending) {
+                        // Server object is newer, so update local object from it
+                        [self copyObject:localObject fromServerObject:serverObject];
+                        changedALocalObject = YES;
+                    }
+                    // Else do nothing with server change or local chage
                 } else {
-                    [self.managedObjectContext deleteObject:localObject];
+                    // No local object and this isn't a deletion, so assume newly 
+                    // inserted server object and copy server data over.
+                    localObject = (PSModel *)[NSEntityDescription insertNewObjectForEntityForName:[serverObject className] inManagedObjectContext:self.managedObjectContext];
+                    [self copyObject:localObject fromServerObject:serverObject];
                     changedALocalObject = YES;
                 }
             }
-            else { // Local object not found.
-                // @todo Again, not sure how to prevent locally-originated changes from coming back down
-                // from server. It's extra traffic but not destructive in any way.
-            }
-        } else {
-            // Object was updated or inserted on server
-            if (localObject) {
-                // Local object exists, so it's an update
-                if ([serverObject.updatedAt compare:localObject.updatedAt] == NSOrderedAscending) {
-                    // Local object is newer, so update server object instead and throw out server change
-                    [localObject pushToServerWithAction:NSUpdatedObjectsKey];
-                } else {
-                    // Server object is newer, so update local object from it
-                    [self copyObject:localObject fromServerObject:serverObject];
-                    changedALocalObject = YES;                   
-                }
-            } else {
-                // No local object and this isn't a deletion, so assume newly 
-                // inserted server object and copy server data over.
-                localObject = (PSModel *)[NSEntityDescription insertNewObjectForEntityForName:[serverObject className] inManagedObjectContext:self.managedObjectContext];
-                [self copyObject:localObject fromServerObject:serverObject];
-                changedALocalObject = YES;
-            }
         }
+
+        // Save any changes, blocking the push that would otherwise result.
+        if (changedALocalObject) {
+            [self saveLocalData];
+            [[NSNotificationCenter defaultCenter] postNotificationName:PSNotificationLocalObjectsUpdatedFromServer object:self];
+        }
+        
+        self.lastServerSyncDate = [NSDate date];
+        
+        // Decrement counter to indicate we're done syncing this entity. 
+        // Will hit 0 when all entities finish this callback.
+        currentlyPullingFromServer--;
     }
-    
-    // Save any changes, blocking the push that would otherwise result.
-    if (changedALocalObject) [self saveLocalData];
-    
-    self.lastServerSyncDate = [NSDate date];
-    
-    // Decrement counter to indicate we're done syncing this entity. 
-    // Will hit 0 when all entities finish this callback.
-    currentlyPullingFromServer--;
 }
 
 
@@ -352,18 +390,18 @@
             [query whereKey:@"docId" equalTo:ob.docId];
             currentlyPushingToServer++;
             [query findObjectsInBackgroundWithBlock:^(NSArray *returnedServerObjects, NSError *error) {
-                if (error) NSLog(@"Model sync error: %@ %@", error, error.userInfo);
+                if (error) SKLog(YES, @"Model sync error: %@ %@", error, error.userInfo);
                 
                 else if (returnedServerObjects.count > 1) {
-                    NSLog(@"Model sync error: found multiple objects for single doc ID.");
-                    
+                    SKLog(YES, @"Model sync error: found multiple objects for single doc ID.");
+
                 } else if (returnedServerObjects.count) {
                     PFObject *serverObject = [returnedServerObjects objectAtIndex:0];
                     
                     // @todo I'm basically running two unidirectional syncs in parallel. Maybe 
                     // a way to consolidate?
                     
-                    if ([serverObject.updatedAt compare:ob.updatedAt] == NSOrderedAscending) {
+                    if ([ob compareVersionWithServerObject:serverObject] == NSOrderedDescending) {
                         // Local object is newer
                         if ([action isEqualToString:NSDeletedObjectsKey] || [action isEqualToString:SKUndeletedObjectsKey]) {
                             // Queued object was either deleted by the user or is queued for server undeletion
@@ -382,7 +420,11 @@
                     }
                 }
                 else {
-                    NSLog(@"Sync issue: object should exist but doesn't. This shouldn't happen...");
+                    SKLog(YES, @"Sync issue: object should exist but doesn't. This shouldn't happen...");
+                    
+                    // Turn into an insert and push the next time. Better to keep the local object than not.
+                    // @todo debug better?
+                    ob.serverPushAction = NSInsertedObjectsKey;
                 }
                 currentlyPushingToServer--;
             }];
@@ -405,7 +447,7 @@
             [self saveLocalData];
         } else {
             // Push failed, presumably via a network error. Keep queued for next try.
-            NSLog(@"Error pushing local data to server: %@", error.description);
+            SKLog(YES, @"Error pushing local data to server: %@", error.description);
         }
         currentlyPushingToServer--;
     }];
@@ -494,13 +536,13 @@
     NSArray *result = [self.managedObjectContext executeFetchRequest:fetchReq error:&error];
     
     if (!result) {
-        NSLog(@"Error fetching task corresponding to server-side object.");
+        SKLog(YES, @"Error fetching task corresponding to server-side object.");
         return nil;
     }
     
     if (result.count > 1) {
         // This shouldn't happen.
-        NSLog(@"Error: Somehow got multiple local docs back with the same ID.");
+        SKLog(YES, @"Error: Somehow got multiple local docs back with the same ID.");
         return nil;
     }
     
@@ -544,12 +586,26 @@
     // If managed object context isn't set try Apple's default
     id appDelegate = [[UIApplication sharedApplication] delegate];
     if ([appDelegate respondsToSelector:@selector(managedObjectContext)]) {
-        return [appDelegate managedObjectContext];
+        [self setManagedObjectContext:[appDelegate managedObjectContext]];
+        return _managedObjectContext;
     }
     
     // If here, nothing available
-    NSLog(@"Error: Sync controller has no managed object context.");
+    SKLog(YES, @"Error: Sync controller has no managed object context.");
     return nil;
+}
+
+/**
+ * Setter for managed object context. Also registers for notifications.
+ */
+- (void)setManagedObjectContext:(NSManagedObjectContext *)managedObjectContext
+{
+    NSNotificationCenter *nc = [NSNotificationCenter defaultCenter];
+    if (_managedObjectContext) {
+        [nc removeObserver:self name:NSManagedObjectContextDidSaveNotification object:_managedObjectContext];
+    }
+    _managedObjectContext = managedObjectContext;
+    [nc addObserver:self selector:@selector(localDataChanged:) name:NSManagedObjectContextDidSaveNotification object:_managedObjectContext];
 }
 
 
@@ -559,12 +615,12 @@
  */
 - (void)saveLocalData
 {
-    self.shouldPushLocalChangesToServer = NO;
+    _isSavingSyncedChanges = YES;
     NSError *err = nil;
     BOOL saved = [self.managedObjectContext save:&err];
     if (!saved)
-        NSLog(@"Error saving local data during sync: %@", err.description);
+        SKLog(YES, @"Error saving local data during sync: %@", err.description);
 }
-
-
+                 
+                 
 @end
