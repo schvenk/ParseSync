@@ -116,7 +116,7 @@ static PSSyncController *_sharedSyncControllerInstance = nil;
     // Add a pull query to grab updates from the server
     PFQuery *pullQuery = [PFQuery queryWithClassName:entityName];
     
-    pullQuery.limit = [NSNumber numberWithInt:NSIntegerMax]; // @todo let this run in batches if necessary? or something?
+    pullQuery.limit = NSIntegerMax; // @todo let this run in batches if necessary? or something?
     
     if (!pullQuery) {
         SKLog(YES, @"Error: Unable to create pull query for entity %@.", entityName);
