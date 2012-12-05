@@ -616,10 +616,14 @@ static PSSyncController *_sharedSyncControllerInstance = nil;
 - (void)saveLocalData
 {
     _isSavingSyncedChanges = YES;
-    NSError *err = nil;
-    BOOL saved = [self.managedObjectContext save:&err];
-    if (!saved)
-        SKLog(YES, @"Error saving local data during sync: %@", err.description);
+    if ([[[UIApplication sharedApplication] delegate] respondsToSelector:@selector(saveContext)]) {
+        [[[UIApplication sharedApplication] delegate] performSelector:@selector(saveContext)];
+    } else {
+        NSError *err = nil;
+        BOOL saved = [self.managedObjectContext save:&err];
+        if (!saved)
+            SKLog(YES, @"Error saving local data during sync: %@", err.description);
+    }
 }
                  
                  
