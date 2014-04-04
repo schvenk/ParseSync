@@ -616,8 +616,8 @@ static PSSyncController *_sharedSyncControllerInstance = nil;
 - (void)saveLocalData
 {
     _isSavingSyncedChanges = YES;
-    if ([[[UIApplication sharedApplication] delegate] respondsToSelector:@selector(saveContext)]) {
-        [[[UIApplication sharedApplication] delegate] performSelector:@selector(saveContext)];
+    if ([[[UIApplication sharedApplication] delegate] respondsToSelector:@selector(TEMPsaveContext)]) {
+        [[[UIApplication sharedApplication] delegate] performSelector:@selector(TEMPsaveContext)];
     } else {
         NSError *err = nil;
         BOOL saved = [self.managedObjectContext save:&err];
